@@ -34,4 +34,20 @@ export const gameConfigs: GameConfig[] = [
 		estimatedTime: 5,
 		difficulty: 'medium',
 	},
+	{
+		id: 'mirror-match',
+		name: 'Mirror Match',
+		description: 'Match pairs of mirrored letters or words',
+		icon: 'RefreshCcw',
+		estimatedTime: 4,
+		difficulty: 'easy',
+	},
+	{
+		id: 'odd-one-out',
+		name: 'Odd One Out',
+		description: 'Identify the item that does not belong in a group',
+		icon: 'Target',
+		estimatedTime: 5,
+		difficulty: 'medium',
+	},
 ];

@@ -2,6 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useGameStore } from '@/store/gameStore';
 import { GameResult } from '@/types';
 import { motion } from 'framer-motion';
 import { PenTool, Star, Target, Timer } from 'lucide-react';
@@ -22,24 +23,41 @@ const patterns = [
 ];
 
 const PatternTraceGame: React.FC<PatternTraceGameProps> = ({ onGameComplete }) => {
+	const { recordGameResult } = useGameStore();
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const [gamePhase, setGamePhase] = useState<'instructions' | 'playing' | 'complete'>('instructions');
 	const [currentPatternIndex, setCurrentPatternIndex] = useState(0);
 	const [isTracing, setIsTracing] = useState(false);
 	const [timeElapsed, setTimeElapsed] = useState(0);
-	const [score, setScore] = useState(0);
-	const [accuracy, setAccuracy] = useState(100);
+	const [totalScore, setTotalScore] = useState(0);
 	const [hits, setHits] = useState(0);
 	const [misses, setMisses] = useState(0);
+	const [currentAccuracy, setCurrentAccuracy] = useState(100);
 
-	const checkPointOnPath = (x: number, y: number): boolean => {
-		const currentPattern = patterns[currentPatternIndex];
-		// Simplified check: a real implementation would use a more complex algorithm
-		// to check if (x,y) is within a tolerance of the SVG path.
-		// For this example, we'll just simulate it.
-		const tolerance = 20;
-		return Math.random() > 0.1; // 90% chance of being "correct"
-	};
+	const checkPointOnPath = useCallback(
+		(x: number, y: number): boolean => {
+			const canvas = canvasRef.current;
+			if (!canvas) return false;
+
+			const ctx = canvas.getContext('2d');
+			if (!ctx) return false;
+
+			const tolerance = 10; // Pixels
+			const pattern = patterns[currentPatternIndex];
+			const path2d = new Path2D(pattern.path);
+
+			ctx.save();
+			ctx.lineWidth = tolerance * 2;
+			ctx.strokeStyle = 'rgba(0,0,0,0)';
+			ctx.stroke(path2d);
+
+			const isPointOnPath = ctx.isPointInStroke(path2d, x, y);
+			ctx.restore();
+
+			return isPointOnPath;
+		},
+		[currentPatternIndex]
+	);
 
 	const handleMouseMove = useCallback(
 		(e: MouseEvent) => {
@@ -56,7 +74,6 @@ const PatternTraceGame: React.FC<PatternTraceGameProps> = ({ onGameComplete }) =
 				setHits((prev) => prev + 1);
 			} else {
 				setMisses((prev) => prev + 1);
-				setAccuracy((prev) => Math.max(0, prev - 0.1));
 			}
 
 			const ctx = canvas.getContext('2d');
@@ -67,15 +84,14 @@ const PatternTraceGame: React.FC<PatternTraceGameProps> = ({ onGameComplete }) =
 				ctx.stroke();
 			}
 		},
-		[isTracing, currentPatternIndex]
+		[isTracing, checkPointOnPath]
 	);
 
 	const handleMouseDown = (e: React.MouseEvent) => {
 		setIsTracing(true);
 		const ctx = canvasRef.current?.getContext('2d');
 		if (ctx) {
-			if (!canvasRef.current) return;
-			const rect = canvasRef.current.getBoundingClientRect();
+			const rect = canvasRef.current!.getBoundingClientRect();
 			ctx.beginPath();
 			ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
 		}
@@ -117,14 +133,22 @@ const PatternTraceGame: React.FC<PatternTraceGameProps> = ({ onGameComplete }) =
 		};
 	}, [handleMouseMove]);
 
+	useEffect(() => {
+		if (hits + misses > 0) {
+			setCurrentAccuracy((hits / (hits + misses)) * 100);
+		} else {
+			setCurrentAccuracy(100);
+		}
+	}, [hits, misses]);
+
 	const handleNextPattern = () => {
+		const patternScore = Math.round(currentAccuracy * (100 / patterns.length));
+		setTotalScore((prev) => prev + patternScore);
+		setHits(0);
+		setMisses(0);
+
 		if (currentPatternIndex < patterns.length - 1) {
 			setCurrentPatternIndex((prev) => prev + 1);
-			setScore((prev) => prev + Math.round(accuracy));
-			setAccuracy(100); // Reset for next pattern
-			const ctx = canvasRef.current?.getContext('2d');
-			if (ctx) ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-			drawPattern();
 		} else {
 			endGame();
 		}
@@ -132,24 +156,32 @@ const PatternTraceGame: React.FC<PatternTraceGameProps> = ({ onGameComplete }) =
 
 	const startGame = () => {
 		setGamePhase('playing');
-		setTimeout(drawPattern, 500); // Wait for canvas to render
+		setTotalScore(0);
+		setHits(0);
+		setMisses(0);
+		setCurrentAccuracy(100);
+		setTimeElapsed(0);
+		setCurrentPatternIndex(0);
+		setTimeout(drawPattern, 500);
 	};
 
 	const endGame = () => {
-		const finalAccuracy = (hits / (hits + misses)) * 100;
-		setScore((prev) => prev + Math.round(finalAccuracy));
+		const totalPoints = totalScore;
+		const totalClicks = hits + misses;
 
 		const result: GameResult = {
 			gameType: 'pattern-trace',
-			score,
-			totalClicks: hits + misses,
+			score: totalPoints,
+			totalClicks,
 			hits,
 			misses,
-			accuracy: finalAccuracy,
-			missRate: 100 - finalAccuracy,
+			accuracy: totalClicks > 0 ? (hits / totalClicks) * 100 : 100,
+			missRate: totalClicks > 0 ? (misses / totalClicks) * 100 : 0,
 			timeSpent: timeElapsed,
 		};
+		recordGameResult('PatternTrace', 'completed', result);
 		onGameComplete(result);
+		setGamePhase('complete');
 	};
 
 	if (gamePhase === 'instructions') {
@@ -160,34 +192,38 @@ const PatternTraceGame: React.FC<PatternTraceGameProps> = ({ onGameComplete }) =
 						<motion.div
 							animate={{ rotate: [0, 10, -10, 0] }}
 							transition={{ duration: 1.5, repeat: Infinity }}
-							className="w-20 h-20 bg-gradient-to-r from-blue-400 to-purple-400 rounded-2xl mx-auto mb-4 flex items-center justify-center"
+							className="w-20 h-20 bg-gradient-to-r from-primary to-secondary rounded-2xl mx-auto mb-4 flex items-center justify-center"
 						>
-							<PenTool className="h-10 w-10 text-white" />
+							<PenTool className="h-10 w-10 text-primary-foreground" />
 						</motion.div>
-						<CardTitle className="text-3xl bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+						<CardTitle className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
 							Pattern Trace
 						</CardTitle>
+						<p className="text-lg text-muted-foreground">Manual dexterity and precision.</p>
 					</CardHeader>
 					<CardContent className="space-y-6">
 						<div className="text-center space-y-4">
-							<p className="text-lg text-gray-700">Follow the line to trace the shapes and patterns.</p>
+							<p className="text-lg text-foreground/80">
+								Trace the shapes on the screen with your mouse. Stay on the path for a high score!
+							</p>
 							<div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
-								<div className="flex items-start gap-3 p-4 bg-blue-50 rounded-xl">
-									<Target className="h-6 w-6 text-blue-500 mt-1" />
+								<div className="flex items-start gap-3 p-4 bg-primary/10 rounded-xl">
+									<Target className="h-6 w-6 text-primary mt-1" />
 									<div>
-										<h4 className="font-semibold text-blue-700">How to Play</h4>
-										<p className="text-sm text-blue-600">
-											Click and hold to start tracing. Try to stay as close to the line as
-											possible.
+										<h4 className="font-semibold text-primary">How to Play</h4>
+										<p className="text-sm text-muted-foreground">
+											Click and hold to start tracing. Your line will turn green for accurate
+											tracing and red for errors.
 										</p>
 									</div>
 								</div>
-								<div className="flex items-start gap-3 p-4 bg-green-50 rounded-xl">
-									<Star className="h-6 w-6 text-green-500 mt-1" />
+								<div className="flex items-start gap-3 p-4 bg-secondary/10 rounded-xl">
+									<Star className="h-6 w-6 text-secondary mt-1" />
 									<div>
-										<h4 className="font-semibold text-green-700">Scoring</h4>
-										<p className="text-sm text-green-600">
-											Your score is based on how accurate and fast you are.
+										<h4 className="font-semibold text-secondary">Scoring</h4>
+										<p className="text-sm text-muted-foreground">
+											Points are based on your tracing accuracy. The more precise you are, the
+											higher your score!
 										</p>
 									</div>
 								</div>
@@ -216,26 +252,26 @@ const PatternTraceGame: React.FC<PatternTraceGameProps> = ({ onGameComplete }) =
 						<div className="flex items-center justify-between">
 							<div className="flex items-center gap-4">
 								<div className="text-center">
-									<p className="text-sm text-gray-600">Pattern</p>
-									<p className="text-2xl font-bold text-blue-600">
+									<p className="text-sm text-muted-foreground">Pattern</p>
+									<p className="text-2xl font-bold text-primary">
 										{currentPatternIndex + 1}/{patterns.length}
 									</p>
 								</div>
 								<div className="text-center">
-									<p className="text-sm text-gray-600">Accuracy</p>
-									<p className="text-2xl font-bold text-purple-600">{Math.round(accuracy)}%</p>
+									<p className="text-sm text-muted-foreground">Accuracy</p>
+									<p className="text-2xl font-bold text-secondary">{Math.round(currentAccuracy)}%</p>
 								</div>
 							</div>
 							<div className="flex items-center gap-4 text-sm">
 								<div className="text-center">
 									<Timer className="h-4 w-4 mx-auto mb-1 text-orange-500" />
-									<p className="font-semibold">
+									<p className="font-semibold text-foreground">
 										{Math.floor(timeElapsed / 60)}:{(timeElapsed % 60).toString().padStart(2, '0')}
 									</p>
 								</div>
 								<div className="text-center">
 									<Star className="h-4 w-4 mx-auto mb-1 text-yellow-500" />
-									<p className="font-semibold">{score}</p>
+									<p className="font-semibold text-foreground">{totalScore}</p>
 								</div>
 							</div>
 						</div>
@@ -243,7 +279,7 @@ const PatternTraceGame: React.FC<PatternTraceGameProps> = ({ onGameComplete }) =
 				</Card>
 				<Card className="playful-card">
 					<CardContent className="p-6">
-						<div className="flex items-center justify-center w-full max-w-lg mx-auto bg-gray-50 rounded-lg shadow-inner">
+						<div className="flex items-center justify-center w-full max-w-lg mx-auto bg-gray-50 dark:bg-gray-800 rounded-lg shadow-inner">
 							<canvas
 								ref={canvasRef}
 								width={500}
@@ -257,6 +293,56 @@ const PatternTraceGame: React.FC<PatternTraceGameProps> = ({ onGameComplete }) =
 								{currentPatternIndex < patterns.length - 1 ? 'Next Pattern' : 'Finish Game'}
 							</Button>
 						</div>
+					</CardContent>
+				</Card>
+			</motion.div>
+		);
+	}
+
+	if (gamePhase === 'complete') {
+		const finalAccuracy = hits + misses > 0 ? (hits / (hits + misses)) * 100 : 100;
+		const finalScore = totalScore + Math.round(finalAccuracy);
+		return (
+			<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-2xl mx-auto">
+				<Card className="playful-card">
+					<CardHeader className="text-center">
+						<motion.div
+							initial={{ scale: 0 }}
+							animate={{ scale: 1 }}
+							transition={{ type: 'spring', stiffness: 200, delay: 0.2 }}
+							className="w-20 h-20 bg-gradient-to-r from-primary to-secondary rounded-2xl mx-auto mb-4 flex items-center justify-center"
+						>
+							<Star className="h-10 w-10 text-primary-foreground" />
+						</motion.div>
+						<CardTitle className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
+							Game Complete!
+						</CardTitle>
+						<p className="text-lg text-muted-foreground">You've completed all patterns.</p>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						<div className="grid grid-cols-2 gap-4">
+							<div className="text-center">
+								<p className="text-sm font-semibold text-muted-foreground">Time Taken</p>
+								<p className="text-xl font-bold text-foreground">
+									{Math.floor(timeElapsed / 60)}:{(timeElapsed % 60).toString().padStart(2, '0')}
+								</p>
+							</div>
+							<div className="text-center">
+								<p className="text-sm font-semibold text-muted-foreground">Final Score</p>
+								<p className="text-xl font-bold text-foreground">{finalScore}</p>
+							</div>
+							<div className="text-center">
+								<p className="text-sm font-semibold text-muted-foreground">Total Clicks</p>
+								<p className="text-xl font-bold text-green-500">{hits + misses}</p>
+							</div>
+							<div className="text-center">
+								<p className="text-sm font-semibold text-muted-foreground">Overall Accuracy</p>
+								<p className="text-xl font-bold text-blue-500">{finalAccuracy.toFixed(0)}%</p>
+							</div>
+						</div>
+						<Button onClick={startGame} variant="outline" className="w-full">
+							Play Again
+						</Button>
 					</CardContent>
 				</Card>
 			</motion.div>

@@ -34,7 +34,7 @@ export interface TestSession {
 	isCompleted: boolean;
 }
 
-export type GameType = 'letter-maze' | 'word-flip' | 'sound-match' | 'pattern-trace';
+export type GameType = 'letter-maze' | 'word-flip' | 'sound-match' | 'pattern-trace' | 'mirror-match' | 'odd-one-out';
 
 export interface GameConfig {
 	id: GameType;
@@ -46,6 +46,7 @@ export interface GameConfig {
 }
 
 export interface GameResult {
+	[x: string]: {};
 	gameType: GameType;
 	score: number;
 	totalClicks: number;

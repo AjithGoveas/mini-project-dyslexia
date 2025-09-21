@@ -25,6 +25,7 @@ interface GameState {
 	startTestSession: (playerId: string) => TestSession;
 	startGame: (gameType: GameType) => void;
 	endGame: (result: GameResult) => GameSession;
+	recordGameResult: (gameName: string, status: string, result: GameResult) => void;
 	completeTestSession: () => void;
 
 	// Data persistence
@@ -139,6 +140,11 @@ export const useGameStore = create<GameState>()(
 					testSessions: [...state.testSessions, completedTestSession],
 					currentTestSession: null,
 				});
+			},
+
+			recordGameResult: (gameName: string, status: string, result: GameResult) => {
+				// Implement your logic here, e.g., save to state or send to backend
+				console.log('Game result recorded:', { gameName, status, result });
 			},
 
 			saveToStorage: () => {

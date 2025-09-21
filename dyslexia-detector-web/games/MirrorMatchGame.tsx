@@ -2,34 +2,64 @@
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useGameStore } from '@/store/gameStore';
 import { GameResult } from '@/types';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Check, RotateCcw, Star, Target, Timer } from 'lucide-react';
+import {
+	Book,
+	Cat,
+	Check,
+	Dog,
+	Fish,
+	LucideIcon,
+	RotateCcw,
+	Star,
+	Sun,
+	Target,
+	Timer,
+	Trees, // Corrected from Trees
+} from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 
 // Interfaces for type safety
-interface WordPair {
-	word: string;
-	meaning: string;
+interface IconPair {
 	id: string;
+	icon: LucideIcon;
+	name: string;
 }
 
 interface FlipCard {
 	id: string;
-	content: string;
-	type: 'word' | 'meaning';
+	content: string; // This will hold the icon name
 	pairId: string;
 	isFlipped: boolean;
 	isMatched: boolean;
 }
 
-interface WordFlipGameProps {
+interface MirrorMatchGameProps {
 	onGameComplete: (result: GameResult) => void;
 }
 
-// Game component
-const WordFlipGame: React.FC<WordFlipGameProps> = ({ onGameComplete }) => {
+// Map of icon names to components for dynamic rendering
+const iconMap: { [key: string]: LucideIcon } = {
+	Cat,
+	Dog,
+	Sun,
+	Trees, // Corrected from Trees
+	Book,
+	Fish,
+};
+
+// Dummy data for the game
+const iconPairs: IconPair[] = [
+	{ id: '1', icon: Cat, name: 'Cat' },
+	{ id: '2', icon: Dog, name: 'Dog' },
+	{ id: '3', icon: Sun, name: 'Sun' },
+	{ id: '4', icon: Trees, name: 'Trees' }, // Corrected from Trees
+	{ id: '5', icon: Book, name: 'Book' },
+	{ id: '6', icon: Fish, name: 'Fish' },
+];
+
+const MirrorMatchGame: React.FC<MirrorMatchGameProps> = ({ onGameComplete }) => {
 	const [cards, setCards] = useState<FlipCard[]>([]);
 	const [flippedCards, setFlippedCards] = useState<FlipCard[]>([]);
 	const [matches, setMatches] = useState<string[]>([]);
@@ -38,34 +68,24 @@ const WordFlipGame: React.FC<WordFlipGameProps> = ({ onGameComplete }) => {
 	const [misses, setMisses] = useState(0);
 	const [totalClicks, setTotalClicks] = useState(0);
 	const [timeElapsed, setTimeElapsed] = useState(0);
-	const [gamePhase, setGamePhase] = useState<'instructions' | 'playing' | 'complete'>('instructions');
+	const [gamePhase, setGamePhase] = useState<'instructions' | 'memorizing' | 'playing' | 'complete'>('instructions');
 	const [attempts, setAttempts] = useState(0);
 
-	const wordPairs: WordPair[] = [
-		{ word: 'CAT', meaning: 'Furry Pet', id: '1' },
-		{ word: 'DOG', meaning: 'Loyal Friend', id: '2' },
-		{ word: 'SUN', meaning: 'Bright Star', id: '3' },
-		{ word: 'TREE', meaning: 'Tall Plant', id: '4' },
-		{ word: 'BOOK', meaning: 'Read Stories', id: '5' },
-		{ word: 'FISH', meaning: 'Swims In Water', id: '6' },
-	];
-
 	const generateCards = useCallback(() => {
+		const gamePairs = iconPairs.slice(0, 4); // Use 4 pairs for an 8-card grid
 		const gameCards: FlipCard[] = [];
 
-		wordPairs.slice(0, 4).forEach((pair) => {
+		gamePairs.forEach((pair) => {
 			gameCards.push({
-				id: `word-${pair.id}`,
-				content: pair.word,
-				type: 'word',
+				id: `icon-1-${pair.id}`,
+				content: pair.name,
 				pairId: pair.id,
 				isFlipped: false,
 				isMatched: false,
 			});
 			gameCards.push({
-				id: `meaning-${pair.id}`,
-				content: pair.meaning,
-				type: 'meaning',
+				id: `icon-2-${pair.id}`,
+				content: pair.name,
 				pairId: pair.id,
 				isFlipped: false,
 				isMatched: false,
@@ -81,16 +101,30 @@ const WordFlipGame: React.FC<WordFlipGameProps> = ({ onGameComplete }) => {
 		setCards(gameCards);
 	}, []);
 
+	// Effect to start the memorizing phase
 	useEffect(() => {
-		if (gamePhase === 'playing') {
+		if (gamePhase === 'memorizing') {
 			generateCards();
-			const timer = setInterval(() => {
-				setTimeElapsed((prev) => prev + 1);
-			}, 1000);
-			return () => clearInterval(timer);
+			// Start the memorizing timer with a 15-second threshold
+			const memorizingTimer = setTimeout(() => {
+				setGamePhase('playing');
+			}, 10000); // 10 seconds
+
+			return () => clearTimeout(memorizingTimer);
 		}
 	}, [gamePhase, generateCards]);
 
+	// Effect to start the game timer when the phase changes to 'playing'
+	useEffect(() => {
+		if (gamePhase === 'playing') {
+			const gameTimer = setInterval(() => {
+				setTimeElapsed((prev) => prev + 1);
+			}, 1000);
+			return () => clearInterval(gameTimer);
+		}
+	}, [gamePhase]);
+
+	// Effect to handle card matching logic after two cards are flipped
 	useEffect(() => {
 		if (flippedCards.length === 2) {
 			setAttempts((prev) => prev + 1);
@@ -125,6 +159,7 @@ const WordFlipGame: React.FC<WordFlipGameProps> = ({ onGameComplete }) => {
 		}
 	}, [flippedCards]);
 
+	// Effect to handle game completion
 	useEffect(() => {
 		if (matches.length === 4 && gamePhase === 'playing') {
 			setTimeout(() => {
@@ -134,7 +169,8 @@ const WordFlipGame: React.FC<WordFlipGameProps> = ({ onGameComplete }) => {
 	}, [matches, gamePhase]);
 
 	const handleCardClick = (clickedCard: FlipCard) => {
-		if (clickedCard.isFlipped || clickedCard.isMatched || flippedCards.length >= 2) {
+		// Prevent clicks while memorizing or if two cards are already flipped
+		if (gamePhase === 'memorizing' || clickedCard.isFlipped || clickedCard.isMatched || flippedCards.length >= 2) {
 			return;
 		}
 
@@ -146,6 +182,10 @@ const WordFlipGame: React.FC<WordFlipGameProps> = ({ onGameComplete }) => {
 	};
 
 	const startGame = () => {
+		setGamePhase('memorizing');
+	};
+
+	const handleReadyClick = () => {
 		setGamePhase('playing');
 	};
 
@@ -154,7 +194,7 @@ const WordFlipGame: React.FC<WordFlipGameProps> = ({ onGameComplete }) => {
 		const missRate = attempts > 0 ? Math.round((misses / attempts) * 100) : 0;
 
 		const result: GameResult = {
-			gameType: 'word-flip',
+			gameType: 'mirror-match',
 			score,
 			totalClicks,
 			hits,
@@ -167,6 +207,11 @@ const WordFlipGame: React.FC<WordFlipGameProps> = ({ onGameComplete }) => {
 		setGamePhase('complete');
 	};
 
+	const DynamicIcon = ({ iconName }: { iconName: string }) => {
+		const IconComponent = iconMap[iconName];
+		return IconComponent ? <IconComponent className="h-16 w-16 text-white" /> : null;
+	};
+
 	if (gamePhase === 'instructions') {
 		return (
 			<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-2xl mx-auto">
@@ -175,32 +220,32 @@ const WordFlipGame: React.FC<WordFlipGameProps> = ({ onGameComplete }) => {
 						<motion.div
 							animate={{ rotateY: [0, 180, 0] }}
 							transition={{ duration: 2, repeat: Infinity }}
-							className="w-20 h-20 bg-gradient-to-r from-blue-400 to-purple-400 rounded-2xl mx-auto mb-4 flex items-center justify-center"
+							className="w-20 h-20 bg-gradient-to-r from-teal-400 to-lime-400 rounded-2xl mx-auto mb-4 flex items-center justify-center"
 						>
 							<RotateCcw className="h-10 w-10 text-white" />
 						</motion.div>
-						<CardTitle className="text-3xl bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-							Word Flip Memory!
+						<CardTitle className="text-3xl bg-gradient-to-r from-teal-600 to-lime-600 bg-clip-text text-transparent">
+							Mirror Match Memory!
 						</CardTitle>
 					</CardHeader>
 					<CardContent className="space-y-6">
 						<div className="text-center space-y-4">
-							<p className="text-lg text-gray-700">Flip cards to match words with their meanings!</p>
+							<p className="text-lg text-gray-700">Flip cards to match identical icons!</p>
 							<div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
-								<div className="flex items-start gap-3 p-4 bg-blue-50 rounded-xl">
-									<Target className="h-6 w-6 text-blue-500 mt-1" />
+								<div className="flex items-start gap-3 p-4 bg-teal-50 rounded-xl">
+									<Target className="h-6 w-6 text-teal-500 mt-1" />
 									<div>
-										<h4 className="font-semibold text-blue-700">How to Play</h4>
-										<p className="text-sm text-blue-600">
-											Click cards to flip them and find matching pairs
+										<h4 className="font-semibold text-teal-700">How to Play</h4>
+										<p className="text-sm text-teal-600">
+											Click cards to flip them and find matching icon pairs
 										</p>
 									</div>
 								</div>
-								<div className="flex items-start gap-3 p-4 bg-green-50 rounded-xl">
-									<Star className="h-6 w-6 text-green-500 mt-1" />
+								<div className="flex items-start gap-3 p-4 bg-lime-50 rounded-xl">
+									<Star className="h-6 w-6 text-lime-500 mt-1" />
 									<div>
-										<h4 className="font-semibold text-green-700">Scoring</h4>
-										<p className="text-sm text-green-600">
+										<h4 className="font-semibold text-lime-700">Scoring</h4>
+										<p className="text-sm text-lime-600">
 											+20 points for matches, -5 for wrong pairs
 										</p>
 									</div>
@@ -209,7 +254,7 @@ const WordFlipGame: React.FC<WordFlipGameProps> = ({ onGameComplete }) => {
 						</div>
 						<motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
 							<Button onClick={startGame} variant="game" size="game" className="w-full">
-								Start Flipping!
+								Start Matching!
 							</Button>
 						</motion.div>
 					</CardContent>
@@ -218,40 +263,55 @@ const WordFlipGame: React.FC<WordFlipGameProps> = ({ onGameComplete }) => {
 		);
 	}
 
-	if (gamePhase === 'playing') {
+	if (gamePhase === 'playing' || gamePhase === 'memorizing') {
 		return (
 			<motion.div
 				initial={{ opacity: 0 }}
 				animate={{ opacity: 1 }}
 				className="w-full max-w-4xl mx-auto space-y-6"
 			>
-				{/* Game Header */}
+				{/* Game Header or Memorizing Message */}
 				<Card className="playful-card">
 					<CardContent className="p-4">
-						<div className="flex items-center justify-between">
-							<div className="flex items-center gap-4">
-								<div className="text-center">
-									<p className="text-sm text-gray-600">Matches</p>
-									<p className="text-2xl font-bold text-blue-600">{matches.length}/4</p>
+						{gamePhase === 'playing' ? (
+							<div className="flex items-center justify-between">
+								<div className="flex items-center gap-4">
+									<div className="text-center">
+										<p className="text-sm text-gray-600">Matches</p>
+										<p className="text-2xl font-bold text-teal-600">{matches.length}/4</p>
+									</div>
+									<div className="text-center">
+										<p className="text-sm text-gray-600">Attempts</p>
+										<p className="text-2xl font-bold text-lime-600">{attempts}</p>
+									</div>
 								</div>
-								<div className="text-center">
-									<p className="text-sm text-gray-600">Attempts</p>
-									<p className="text-2xl font-bold text-purple-600">{attempts}</p>
+								<div className="flex items-center gap-4 text-sm">
+									<div className="text-center">
+										<Timer className="h-4 w-4 mx-auto mb-1 text-orange-500" />
+										<p className="font-semibold">
+											{Math.floor(timeElapsed / 60)}:
+											{(timeElapsed % 60).toString().padStart(2, '0')}
+										</p>
+									</div>
+									<div className="text-center">
+										<Star className="h-4 w-4 mx-auto mb-1 text-yellow-500" />
+										<p className="font-semibold">{score}</p>
+									</div>
 								</div>
 							</div>
-							<div className="flex items-center gap-4 text-sm">
-								<div className="text-center">
-									<Timer className="h-4 w-4 mx-auto mb-1 text-orange-500" />
-									<p className="font-semibold">
-										{Math.floor(timeElapsed / 60)}:{(timeElapsed % 60).toString().padStart(2, '0')}
-									</p>
-								</div>
-								<div className="text-center">
-									<Star className="h-4 w-4 mx-auto mb-1 text-yellow-500" />
-									<p className="font-semibold">{score}</p>
-								</div>
+						) : (
+							<div className="text-center space-y-2">
+								<h3 className="text-2xl font-semibold text-teal-600 animate-pulse">
+									Memorize the Card Positions!
+								</h3>
+								<p className="text-sm text-gray-600">
+									The game will start automatically in 10 seconds.
+								</p>
+								<Button onClick={handleReadyClick} variant="outline" className="rounded-xl">
+									I'm Ready!
+								</Button>
 							</div>
-						</div>
+						)}
 					</CardContent>
 				</Card>
 
@@ -266,8 +326,8 @@ const WordFlipGame: React.FC<WordFlipGameProps> = ({ onGameComplete }) => {
 										initial={{ scale: 0, opacity: 0 }}
 										animate={{ scale: 1, opacity: 1 }}
 										exit={{ scale: 0, opacity: 0 }}
-										whileHover={{ scale: card.isMatched ? 1 : 1.05 }}
-										whileTap={{ scale: card.isMatched ? 1 : 0.95 }}
+										whileHover={{ scale: card.isMatched || gamePhase === 'memorizing' ? 1 : 1.05 }}
+										whileTap={{ scale: card.isMatched || gamePhase === 'memorizing' ? 1 : 0.95 }}
 										className="relative h-32 cursor-pointer"
 										onClick={() => handleCardClick(card)}
 									>
@@ -277,24 +337,16 @@ const WordFlipGame: React.FC<WordFlipGameProps> = ({ onGameComplete }) => {
                                                 ${
 													card.isMatched
 														? 'bg-gradient-to-r from-green-400 to-emerald-400'
-														: card.isFlipped
-														? card.type === 'word'
-															? 'bg-gradient-to-r from-blue-400 to-cyan-400'
-															: 'bg-gradient-to-r from-purple-400 to-pink-400'
+														: card.isFlipped || gamePhase === 'memorizing'
+														? 'bg-gradient-to-r from-blue-400 to-cyan-400'
 														: 'bg-gradient-to-r from-gray-400 to-gray-500'
 												}
                                             `}
 										>
 											<div className="w-full h-full flex items-center justify-center p-4">
-												{card.isFlipped || card.isMatched ? (
-													<div className="text-center">
-														<p
-															className={`font-bold text-white ${
-																card.type === 'word' ? 'text-xl' : 'text-sm'
-															}`}
-														>
-															{card.content}
-														</p>
+												{card.isFlipped || card.isMatched || gamePhase === 'memorizing' ? (
+													<div className="relative w-full h-full flex items-center justify-center">
+														<DynamicIcon iconName={card.content} />
 														{card.isMatched && (
 															<motion.div
 																initial={{ scale: 0 }}
@@ -331,4 +383,4 @@ const WordFlipGame: React.FC<WordFlipGameProps> = ({ onGameComplete }) => {
 	return null;
 };
 
-export default WordFlipGame;
+export default MirrorMatchGame;
