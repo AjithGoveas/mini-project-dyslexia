@@ -96,7 +96,7 @@ export default function HomePage() {
 								size="game"
 								className="text-lg px-8 py-6 shadow-lg hover:shadow-xl transition-all duration-300"
 							>
-								<Sparkles className="mr-2 h-5 w-5 animate-pulse" />
+								<Sparkles className="mr-2 h-5 w-5 animate-pulse fill-amber-400" />
 								Start Your Journey
 							</Button>
 							<Button
